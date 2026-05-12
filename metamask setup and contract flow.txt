@@ -1,0 +1,338 @@
+METAMASK SETUP AND CONTRACT FLOW
+================================
+
+Purpose of this guide
+---------------------
+This file explains how to connect MetaMask to the project setup, deploy the FakeMoney
+contract, and understand how the website can take Sepolia ETH payments.
+
+Important:
+The website now supports a hybrid flow. Users can still use the app-created wallet,
+or they can connect MetaMask and sign the circus contribution in the browser.
+
+Instead:
+- MetaMask is used for the deployer/owner wallet.
+- The backend still creates demo wallets for normal website users.
+- A connected MetaMask wallet signs a native Sepolia ETH payment to the circus treasury.
+- The backend verifies the signed MetaMask transaction before adding it to the campaign ledger.
+
+
+1. What MetaMask is used for
+----------------------------
+MetaMask is used to:
+
+1. Hold the Sepolia test wallet that deploys the contract.
+2. Pay Sepolia gas when deploying FakeMoney.sol.
+3. Act as the contract owner wallet.
+4. Let a connected website user confirm a contribution popup.
+5. Let you inspect the deployed address and transaction hashes.
+
+MetaMask is NOT used to:
+
+1. Log in to the website.
+2. Replace username/password accounts.
+3. Hold the app-created backend wallet.
+
+The website is a hybrid classroom demo:
+- Without MetaMask connected, the server performs the demo transfer.
+- With MetaMask connected, the browser opens a MetaMask popup and the user sends Sepolia ETH.
+
+
+2. Install and prepare MetaMask
+-------------------------------
+1. Install MetaMask in the browser.
+
+2. Create a new wallet or import a test wallet.
+
+3. Switch MetaMask to Sepolia.
+   If Sepolia is hidden:
+   - Open MetaMask settings.
+   - Enable test networks.
+   - Select Sepolia.
+
+4. Get Sepolia test ETH for the MetaMask account.
+   You need test ETH to pay gas for contract deployment.
+   Use a Sepolia faucet approved by your class, or a faucet from Alchemy, Infura, or QuickNode.
+
+Important balance note:
+MetaMask shows Sepolia ETH. The current fundraiser payment flow uses that same Sepolia ETH.
+
+The older CFUSD token contract is still in the project as a smart-contract/token demo, but the
+MetaMask fundraiser payment now sends native ETH directly to the circus treasury wallet.
+
+
+3. Put MetaMask values into .env
+--------------------------------
+Use only a test wallet. Never use a wallet that has real funds.
+
+1. Copy the private key from the MetaMask test account.
+
+2. Put it in .env:
+
+     PRIVATE_KEY=0x_your_metamask_test_wallet_private_key
+     SERVER_PRIVATE_KEY=0x_your_metamask_test_wallet_private_key
+
+For this project, these are usually the same key:
+
+- PRIVATE_KEY is used by Hardhat to deploy the contract.
+- SERVER_PRIVATE_KEY is used by the backend after deployment.
+
+This matters because FakeMoney.sol has owner-only functions. The owner is the wallet
+that deploys the contract. If SERVER_PRIVATE_KEY is not the owner wallet, mint and
+adminTransfer will fail.
+
+3. Put your Sepolia RPC URL in .env:
+
+     API_URL=https://eth-sepolia.g.alchemy.com/v2/your_key
+     CHAIN_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your_key
+
+For this project, these are usually the same URL:
+
+- API_URL is used by Hardhat when deploying.
+- CHAIN_RPC_URL is used by the Express backend when reading/writing contract data.
+
+
+4. Compile and deploy the contract
+----------------------------------
+From the project folder:
+
+  npm run compile
+
+Then deploy to Sepolia:
+
+  npm run deploy
+
+The terminal should print something like:
+
+  FakeMoney deployed to address: 0x123...
+
+Copy that deployed address into .env:
+
+  CONTRACT_ADDRESS=0x123...
+
+Then start the website:
+
+  npm start
+
+Open:
+
+  http://localhost:3000
+
+
+5. How FakeMoney.sol works
+--------------------------
+The contract is:
+
+  contracts\FakeMoney.sol
+
+It creates a fake classroom token:
+
+  name: CampusFakeUSD
+  symbol: CFUSD
+  decimals: 2
+
+Decimals are 2, so the contract stores values like this:
+
+  1000 CFUSD = 100000 contract units
+  10.50 CFUSD = 1050 contract units
+
+The balances are stored in:
+
+  mapping(address => uint256) private balances;
+
+Main functions:
+
+1. constructor(initialSupply)
+   Runs once during deployment.
+   Sets the deployer as owner.
+   Gives the initial supply to the deployer wallet.
+
+2. balanceOf(address account)
+   Reads a wallet's CFUSD balance.
+   The backend calls this to show balances on the website.
+
+3. mint(address to, uint256 amount)
+   Creates new CFUSD.
+   Only the owner wallet can call it.
+   The backend calls this when a user registers or clicks the test mint button.
+
+4. transfer(address to, uint256 amount)
+   Normal transfer from msg.sender.
+   This exists in the contract, but the current website does not use browser wallet signing.
+
+5. adminTransfer(address from, address to, uint256 amount)
+   Demo transfer controlled by the contract owner.
+   Only the owner wallet can call it.
+   The backend uses this to move CFUSD from a website user's generated wallet to the circus treasury wallet.
+
+
+6. How the website reflects contract balances
+---------------------------------------------
+The website talks to the Express backend. The backend talks to the contract.
+
+When a user registers:
+
+1. server/index.js creates a random wallet for the user.
+2. The wallet address is saved in server/app.db.
+3. The backend calls:
+
+     contract.mint(user.wallet_address, parseTokenAmount(STARTING_BALANCE))
+
+4. The website calls:
+
+     GET /api/me
+
+5. /api/me calls:
+
+     balanceOf(userWallet)
+
+6. The user's CFUSD balance appears in the website.
+
+
+When a user contributes with the app-created wallet:
+
+1. The user chooses an act and amount.
+2. The website sends:
+
+     POST /api/circus/fund
+
+3. The backend finds:
+   - the logged-in user's generated wallet
+   - the official circus treasury wallet
+   - the selected circus act
+
+4. The backend calls:
+
+     contract.adminTransfer(sender.wallet_address, circus.wallet_address, amount)
+
+5. The backend waits for confirmation:
+
+     await tx.wait()
+
+6. The backend saves the contribution in server/app.db with:
+   - username
+   - act name
+   - amount
+   - note
+   - transaction hash
+   - milestone level
+
+7. The frontend reloads:
+   - /api/me for the user's updated balance
+   - /api/circus for the circus treasury balance and ledger
+
+8. The animated circus stage updates based on the circus treasury wallet balance:
+
+   0.01 ETH = milestone 1
+   0.05 ETH = milestone 2
+   0.10 ETH = milestone 3
+   0.25 ETH = fully funded
+
+
+When a user contributes with MetaMask connected:
+
+1. The user clicks Connect MetaMask.
+2. The website reads the deployed contract address from:
+
+     GET /api/web3-config
+
+3. The user chooses an act and enters an ETH amount.
+
+4. The frontend asks MetaMask to send native Sepolia ETH:
+
+     signer.sendTransaction({
+       to: circusWalletAddress,
+       value: parseEther(amount)
+     })
+
+5. MetaMask opens a popup.
+
+6. The user confirms the ETH payment.
+
+7. After Sepolia confirms it, the frontend sends the transaction hash to:
+
+     POST /api/circus/fund/eth
+
+8. The backend verifies:
+   - the transaction exists
+   - the transaction succeeded
+   - the sender matches the connected MetaMask wallet
+   - the recipient is the circus treasury wallet
+   - the amount matches the form amount
+
+9. The backend records the contribution and reward in server/app.db.
+
+
+7. What to tell another LLM to execute
+--------------------------------------
+Use this prompt for another LLM:
+
+This is a Node/Express + Hardhat + Sepolia hybrid demo app. Users still log in with
+username/password, but the current fundraiser payment uses MetaMask. The frontend sends native
+Sepolia ETH to the circus treasury wallet with a MetaMask confirmation popup. The backend then
+verifies the confirmed transaction hash before recording the fundraiser contribution.
+
+Execution steps:
+
+1. Install dependencies:
+
+     npm install
+
+2. Configure .env:
+
+     API_URL=<Sepolia RPC URL>
+     CHAIN_RPC_URL=<same Sepolia RPC URL>
+     PRIVATE_KEY=<MetaMask test wallet private key>
+     SERVER_PRIVATE_KEY=<same MetaMask test wallet private key>
+     JWT_SECRET=<any strong random string>
+     ENC_SECRET=<any strong random string>
+     TOKEN_DECIMALS=2
+     STARTING_BALANCE=1000
+     CIRCUS_USERNAME=circus
+
+3. Compile:
+
+     npm run compile
+
+4. Deploy:
+
+     npm run deploy
+
+5. Copy the deployed contract address into:
+
+     CONTRACT_ADDRESS=<deployed FakeMoney address>
+
+6. Start:
+
+     npm start
+
+7. Open:
+
+     http://localhost:3000
+
+8. Register a website user.
+
+9. For the ETH payment demo:
+   - Click Connect MetaMask.
+   - Choose an act and enter a small Sepolia ETH amount.
+   - Submit the contribution.
+   - Confirm the MetaMask popup.
+
+
+8. Troubleshooting
+------------------
+If deployment fails because of gas:
+  Make sure the MetaMask deployer account has Sepolia test ETH.
+
+If deployment works but website minting fails:
+  Make sure SERVER_PRIVATE_KEY belongs to the same wallet that deployed the contract.
+
+If website transfers fail with "Only owner":
+  SERVER_PRIVATE_KEY is not the contract owner wallet. Use the deployer wallet private key,
+  or redeploy the contract using the SERVER_PRIVATE_KEY wallet.
+
+If balances do not update:
+  Make sure CHAIN_RPC_URL points to the same Sepolia network where CONTRACT_ADDRESS was deployed.
+
+If old users or old circus balances are confusing the demo:
+  Stop the server, delete server\app.db, then run npm start again.

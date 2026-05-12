@@ -1,0 +1,111 @@
+HOW TO RUN CHAIN CIRCUS
+=======================
+
+1. Install Node.js
+------------------
+Make sure Node.js is installed and available in your terminal:
+
+  node -v
+  npm -v
+
+If either command is not found, install Node.js from:
+
+  https://nodejs.org/
+
+
+2. Install project dependencies
+-------------------------------
+From the project folder:
+
+  cd "C:\Users\Bowling Logistics\COSC480_Web3_Contract"
+  npm install
+
+
+3. Set up your .env file
+------------------------
+Create or update the .env file in the project root.
+
+You can copy values from .env.example, then replace the placeholder values:
+
+  API_URL=https://eth-sepolia.g.alchemy.com/v2/your_key
+  PRIVATE_KEY=0x_your_wallet_private_key
+
+  PORT=3000
+  JWT_SECRET=replace_with_strong_secret
+  ENC_SECRET=replace_with_strong_encryption_secret
+
+  CHAIN_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your_key
+  CONTRACT_ADDRESS=0x_your_deployed_contract
+  SERVER_PRIVATE_KEY=0x_contract_owner_private_key
+  TOKEN_DECIMALS=2
+  STARTING_BALANCE=1000
+  CIRCUS_USERNAME=circus
+  CAMPAIGN_NAME=Spring Big Top Showcase
+
+Important:
+- SERVER_PRIVATE_KEY should be the contract owner/deployer wallet private key.
+- CONTRACT_ADDRESS is filled in after deploying the contract.
+- Never share or commit a real private key.
+
+
+4. Compile the smart contract
+-----------------------------
+Run:
+
+  npm run compile
+
+
+5. Deploy the smart contract
+----------------------------
+Run:
+
+  npm run deploy
+
+After deployment, copy the deployed FakeMoney contract address into .env:
+
+  CONTRACT_ADDRESS=0x_your_deployed_contract
+
+
+6. Start the web app
+--------------------
+Run:
+
+  npm start
+
+Then open this in your browser:
+
+  http://localhost:3000
+
+
+7. Use the app
+--------------
+1. Register a new user.
+2. The backend creates a wallet and tries to mint test CFUSD.
+3. Choose an expense bucket.
+4. Enter a CFUSD amount and optional memo.
+5. Submit the transfer.
+6. The transaction ledger will show the confirmed tx hash.
+
+
+Common issues
+-------------
+If "node is not recognized":
+  Install Node.js, then close and reopen your terminal.
+
+If the app says blockchain config is missing:
+  Check CHAIN_RPC_URL, CONTRACT_ADDRESS, and SERVER_PRIVATE_KEY in .env.
+
+If registration works but minting fails:
+  Make sure SERVER_PRIVATE_KEY belongs to the contract owner account.
+
+If the app has old or strange data:
+  Stop the server, delete server\app.db, then run npm start again.
+
+If port 3000 is busy:
+  Change PORT in .env, for example:
+
+  PORT=3001
+
+  Then open:
+
+  http://localhost:3001
