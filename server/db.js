@@ -1,65 +1,155 @@
-const fs = require("fs");
 const path = require("path");
-const initSqlJs = require("sql.js");
+const { DataTypes, QueryTypes, Sequelize } = require("sequelize");
 
 const dbPath = process.env.DB_FILE || path.join(__dirname, "app.db");
 
-let db;
-let SQL;
+const sequelize = new Sequelize({
+  dialect: "sqlite",
+  storage: dbPath,
+  logging: false,
+});
 
-function isMutatingSql(sql) {
-  return /^\s*(insert|update|delete|create|drop|alter|replace|pragma)\b/i.test(sql);
+const User = sequelize.define(
+  "User",
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    username: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      unique: true,
+    },
+    password_hash: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    wallet_address: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      unique: true,
+    },
+    wallet_key_encrypted: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    created_at: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: Sequelize.literal("CURRENT_TIMESTAMP"),
+    },
+  },
+  {
+    tableName: "users",
+    timestamps: false,
+  }
+);
+
+const Contribution = sequelize.define(
+  "Contribution",
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
+    },
+    username: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    wallet_address: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    campaign_name: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    act_id: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: "aerial-rig",
+    },
+    act_name: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: "Aerial Rig",
+    },
+    note: {
+      type: DataTypes.TEXT,
+    },
+    amount: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    currency: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: "CFUSD",
+    },
+    tx_hash: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      unique: true,
+    },
+    milestone_level: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    reward_tier: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: "Friend of the Circus",
+    },
+    reward_description: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: "Digital thank-you receipt",
+    },
+    created_at: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: Sequelize.literal("CURRENT_TIMESTAMP"),
+    },
+  },
+  {
+    tableName: "contributions",
+    timestamps: false,
+  }
+);
+
+User.hasMany(Contribution, { foreignKey: "user_id" });
+Contribution.belongsTo(User, { foreignKey: "user_id" });
+
+function normalizeRow(row) {
+  if (!row || typeof row !== "object") {
+    return row;
+  }
+
+  return { ...row };
 }
 
-function persistDb() {
-  const bytes = db.export();
-  fs.writeFileSync(dbPath, Buffer.from(bytes));
+function isSelectSql(sql) {
+  return /^\s*(select|pragma)\b/i.test(sql);
+}
+
+function isInsertSql(sql) {
+  return /^\s*insert\b/i.test(sql);
 }
 
 async function initDb() {
-  const wasmPath = require.resolve("sql.js/dist/sql-wasm.wasm");
-  SQL = await initSqlJs({
-    locateFile: () => wasmPath,
-  });
-
-  if (fs.existsSync(dbPath)) {
-    const fileBuffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(fileBuffer);
-  } else {
-    db = new SQL.Database();
-  }
-
-  await run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      wallet_address TEXT NOT NULL UNIQUE,
-      wallet_key_encrypted TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await run(`
-    CREATE TABLE IF NOT EXISTS contributions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      username TEXT NOT NULL,
-      wallet_address TEXT NOT NULL,
-      campaign_name TEXT NOT NULL,
-      act_id TEXT NOT NULL DEFAULT 'aerial-rig',
-      act_name TEXT NOT NULL DEFAULT 'Aerial Rig',
-      note TEXT,
-      amount TEXT NOT NULL,
-      currency TEXT NOT NULL DEFAULT 'CFUSD',
-      tx_hash TEXT NOT NULL UNIQUE,
-      milestone_level INTEGER NOT NULL,
-      reward_tier TEXT NOT NULL DEFAULT 'Friend of the Circus',
-      reward_description TEXT NOT NULL DEFAULT 'Digital thank-you receipt',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    )
-  `);
+  await sequelize.authenticate();
+  await sequelize.sync();
 
   await ensureColumn("contributions", "act_id", "TEXT NOT NULL DEFAULT 'aerial-rig'");
   await ensureColumn("contributions", "act_name", "TEXT NOT NULL DEFAULT 'Aerial Rig'");
@@ -77,63 +167,48 @@ async function ensureColumn(table, column, definition) {
 }
 
 async function run(sql, params = []) {
-  const stmt = db.prepare(sql);
-  try {
-    stmt.bind(params);
-    while (stmt.step()) {
-      // Consume rows if any (mostly for non-SELECT compatibility).
-    }
-  } finally {
-    stmt.free();
-  }
+  const [, metadata] = await sequelize.query(sql, {
+    replacements: params,
+  });
 
-  const changes = db.getRowsModified();
   let lastID = null;
-  const lastIdResult = db.exec("SELECT last_insert_rowid() AS id");
-  if (lastIdResult[0] && lastIdResult[0].values[0]) {
-    lastID = Number(lastIdResult[0].values[0][0]);
+  if (isInsertSql(sql)) {
+    const row = await get("SELECT last_insert_rowid() AS id");
+    lastID = row ? Number(row.id) : null;
   }
 
-  if (isMutatingSql(sql)) {
-    persistDb();
-  }
-
-  return { changes, lastID };
+  return {
+    changes: typeof metadata?.changes === "number" ? metadata.changes : 0,
+    lastID,
+  };
 }
 
 async function get(sql, params = []) {
-  const stmt = db.prepare(sql);
-  try {
-    stmt.bind(params);
-    if (!stmt.step()) {
-      return undefined;
-    }
-
-    const row = stmt.getAsObject();
-    return row;
-  } finally {
-    stmt.free();
-  }
+  const rows = await all(sql, params);
+  return rows[0];
 }
 
 async function all(sql, params = []) {
-  const stmt = db.prepare(sql);
-  try {
-    stmt.bind(params);
-    const rows = [];
-    while (stmt.step()) {
-      rows.push(stmt.getAsObject());
-    }
+  const rows = await sequelize.query(sql, {
+    replacements: params,
+    type: isSelectSql(sql) ? QueryTypes.SELECT : QueryTypes.RAW,
+  });
 
-    return rows;
-  } finally {
-    stmt.free();
+  if (!Array.isArray(rows)) {
+    return [];
   }
+
+  return rows.map(normalizeRow);
 }
 
 module.exports = {
   all,
   get,
   initDb,
+  models: {
+    Contribution,
+    User,
+  },
   run,
+  sequelize,
 };

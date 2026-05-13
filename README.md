@@ -8,7 +8,7 @@ The project also includes `FakeMoney.sol`, a classroom token contract used to de
 
 - Solidity + Hardhat + Ethers.js
 - Node.js + Express
-- SQL.js local database
+- Sequelize ORM with a local SQLite database
 - JWT auth + bcrypt password hashing
 - Vanilla HTML/CSS/JS frontend
 - MetaMask browser wallet
@@ -19,7 +19,7 @@ The project also includes `FakeMoney.sol`, a classroom token contract used to de
 - `contracts/FakeMoney.sol`: classroom fake-token contract for CFUSD minting/transfer examples
 - `scripts/deploy.js`: deploy script for `FakeMoney`
 - `server/index.js`: API, auth, campaign routes, MetaMask ETH transaction verification, static frontend server
-- `server/db.js`: local SQL database setup for users and campaign contributions
+- `server/db.js`: Sequelize/SQLite setup for users and campaign contributions
 - `server/auth.js`: JWT middleware and wallet-key encryption helpers
 - `server/blockchain.js`: contract and provider helpers
 - `server/public/*`: login, MetaMask connection, fundraiser UI, animation, and ledger
@@ -91,7 +91,7 @@ Open:
 http://localhost:3000
 ```
 
-If old demo data causes confusion, stop the server, delete `server/app.db`, and start again.
+If old demo data causes confusion, stop the server, delete `server/app.db`, and start again. Sequelize will recreate the local SQLite tables on startup.
 
 ## Current Fundraising Flow
 

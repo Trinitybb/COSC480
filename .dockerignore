@@ -1,0 +1,9 @@
+.git
+.env
+node_modules
+server/app.db
+server/*.db
+cache
+npm-debug.log
+Dockerfile
+docker-compose.yml

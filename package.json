@@ -22,6 +22,7 @@
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
-    "sql.js": "^1.13.0"
+    "sequelize": "^6.37.5",
+    "sqlite3": "^5.1.7"
   }
 }
